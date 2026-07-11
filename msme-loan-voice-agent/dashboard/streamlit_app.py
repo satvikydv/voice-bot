@@ -62,6 +62,7 @@ filtered = data.copy()
 st.sidebar.header("Initiate Call")
 target_phone = st.sidebar.text_input("Phone Number (E.164)", placeholder="+1234567890")
 target_name = st.sidebar.text_input("Name (Optional)", placeholder="John Doe")
+sector = st.sidebar.selectbox("Sector", ["None", "Retail", "Technology", "Agriculture"])
 if st.sidebar.button("Make Call"):
     if not target_phone:
         st.sidebar.error("Please enter a phone number.")
@@ -71,6 +72,8 @@ if st.sidebar.button("Make Call"):
             payload = {"phone_number": target_phone}
             if target_name:
                 payload["name"] = target_name
+            if sector != "None":
+                payload["sector"] = sector
                 
             response = requests.post(
                 "http://localhost:8000/call",

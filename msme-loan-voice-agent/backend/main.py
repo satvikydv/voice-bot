@@ -50,20 +50,36 @@ from typing import Optional
 class CallRequest(BaseModel):
     phone_number: str
     name: Optional[str] = None
+    sector: Optional[str] = None
 
 @app.post("/call")
 async def initiate_call(request: CallRequest) -> JSONResponse:
     api_key = os.getenv("VAPI_API_KEY")
-    assistant_id = os.getenv("ASSISTANT_ID")
     phone_number_id = os.getenv("PHONE_NUMBER_ID")
 
+    sector_assistant_map = {
+        "Retail": os.getenv("RETAIL_ASSISTANT_ID"),
+        "Technology": os.getenv("TECH_ASSISTANT_ID"),
+        "Agriculture": os.getenv("AGRI_ASSISTANT_ID"),
+    }
+    
+    assistant_id = os.getenv("ASSISTANT_ID")
+    if request.sector and request.sector in sector_assistant_map and sector_assistant_map[request.sector]:
+        assistant_id = sector_assistant_map[request.sector]
+
     if not api_key or not assistant_id or not phone_number_id:
-        raise HTTPException(status_code=500, detail="Missing Vapi configuration in environment variables.")
+        raise HTTPException(status_code=500, detail="Missing Vapi configuration in environment variables. Check ASSISTANT_ID or sector-specific IDs.")
 
     try:
         customer_data = {"number": request.phone_number}
         if request.name:
             customer_data["name"] = request.name
+
+        payload = {
+            "assistantId": assistant_id,
+            "phoneNumberId": phone_number_id,
+            "customer": customer_data,
+        }
 
         response = requests.post(
             "https://api.vapi.ai/call",
@@ -71,11 +87,7 @@ async def initiate_call(request: CallRequest) -> JSONResponse:
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             },
-            json={
-                "assistantId": assistant_id,
-                "phoneNumberId": phone_number_id,
-                "customer": customer_data,
-            },
+            json=payload,
             timeout=30,
         )
         response.raise_for_status()
