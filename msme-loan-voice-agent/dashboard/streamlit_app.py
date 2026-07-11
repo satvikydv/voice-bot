@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pandas as pd
 import streamlit as st
+import plotly.express as px
 from dotenv import load_dotenv
 from pymongo import MongoClient
 
@@ -52,18 +53,56 @@ def load_data() -> pd.DataFrame:
         st.error(f"Error connecting to MongoDB: {e}")
         return pd.DataFrame()
 
-st.set_page_config(page_title="MSME Loan Voice Agent", layout="wide")
+st.set_page_config(page_title="MSME Loan Voice Agent", layout="wide", page_icon="📞")
 
-st.title("MSME Loan Voice Agent Dashboard")
+st.markdown("""
+<style>
+    .stMetric {
+        background-color: #1E293B;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
+        border: 1px solid #334155;
+    }
+    .stMetric label {
+        color: #94A3B8 !important;
+        font-weight: 600;
+        font-size: 1rem;
+    }
+    .stMetric [data-testid="stMetricValue"] {
+        color: #F8FAFC !important;
+        font-weight: 700;
+    }
+    .chat-bubble-ai {
+        background-color: #1E293B;
+        padding: 10px 15px;
+        border-radius: 15px;
+        margin-bottom: 10px;
+        max-width: 80%;
+        color: #F8FAFC;
+    }
+    .chat-bubble-user {
+        background-color: #3B82F6;
+        padding: 10px 15px;
+        border-radius: 15px;
+        margin-bottom: 10px;
+        max-width: 80%;
+        margin-left: auto;
+        color: #F8FAFC;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+st.title("📞 MSME Loan Voice Agent Dashboard")
 
 data = load_data()
 filtered = data.copy()
 
-st.sidebar.header("Initiate Call")
+st.sidebar.header("🚀 Initiate Call")
 target_phone = st.sidebar.text_input("Phone Number (E.164)", placeholder="+1234567890")
 target_name = st.sidebar.text_input("Name (Optional)", placeholder="John Doe")
 sector = st.sidebar.selectbox("Sector", ["None", "Retail", "Technology", "Agriculture"])
-if st.sidebar.button("Make Call"):
+if st.sidebar.button("Make Call", use_container_width=True):
     if not target_phone:
         st.sidebar.error("Please enter a phone number.")
     else:
@@ -88,7 +127,7 @@ if st.sidebar.button("Make Call"):
             st.sidebar.error(f"Error connecting to backend: {e}")
 
 st.sidebar.markdown("---")
-st.sidebar.header("Filters")
+st.sidebar.header("🔍 Filters")
 
 if not data.empty:
     status_filter = st.sidebar.multiselect(
@@ -96,9 +135,14 @@ if not data.empty:
         sorted(data["status"].dropna().unique().tolist()),
     )
 
+    if "qualification_status" in data.columns:
+        qual_options = sorted(data["qualification_status"].dropna().unique().tolist())
+    else:
+        qual_options = []
+        
     qualification_filter = st.sidebar.multiselect(
         "Qualification status",
-        sorted(data["qualification_status"].dropna().unique().tolist()),
+        qual_options,
     )
 
     min_date = data["date"].min()
@@ -122,18 +166,16 @@ if not data.empty:
         filtered = filtered[(filtered["date"] >= start_date) & (filtered["date"] <= end_date)]
 
 
-st.subheader("Overview")
+st.subheader("📊 Overview")
 
 col1, col2, col3, col4, col5 = st.columns(5)
 total_calls = len(filtered)
 completed_calls = (filtered["status"] == "completed").sum() if not filtered.empty and "status" in filtered.columns else 0
 missed_calls = (filtered["status"] == "failed").sum() if not filtered.empty and "status" in filtered.columns else 0
 
-# Check the new 'Lead Qualified' structured output boolean
 if not filtered.empty and "Lead Qualified" in filtered.columns:
     qualified_leads = (filtered["Lead Qualified"] == True).sum()
 else:
-    # Fallback to the old regex parser if needed
     qualified_leads = (filtered["qualification_status"] == "qualified").sum() if not filtered.empty and "qualification_status" in filtered.columns else 0
 
 if not filtered.empty and "duration" in filtered.columns:
@@ -142,24 +184,42 @@ if not filtered.empty and "duration" in filtered.columns:
 else:
     avg_duration_str = "0s"
 
-col1.metric("Total Calls", total_calls)
-col2.metric("Completed Calls", completed_calls)
-col3.metric("Missed / Not Picked", missed_calls)
-col4.metric("Qualified Leads", qualified_leads)
-col5.metric("Avg Duration", avg_duration_str)
+with col1: st.metric("Total Calls", total_calls)
+with col2: st.metric("Completed Calls", completed_calls)
+with col3: st.metric("Missed / Not Picked", missed_calls)
+with col4: st.metric("Qualified Leads", qualified_leads)
+with col5: st.metric("Avg Duration", avg_duration_str)
+
+st.markdown("<br>", unsafe_allow_html=True)
+st.subheader("📈 Analytics")
+
+if not filtered.empty:
+    chart_col1, chart_col2 = st.columns(2)
+    with chart_col1:
+        # Call Volume Line Chart
+        daily_calls = filtered.groupby('date').size().reset_index(name='count')
+        fig_line = px.line(daily_calls, x='date', y='count', title='Call Volume Over Time', markers=True, color_discrete_sequence=['#FACC15'])
+        fig_line.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font_color='#F8FAFC')
+        st.plotly_chart(fig_line, use_container_width=True)
+    
+    with chart_col2:
+        # Status Breakdown Pie Chart
+        status_counts = filtered['status'].value_counts().reset_index()
+        status_counts.columns = ['status', 'count']
+        fig_pie = px.pie(status_counts, values='count', names='status', title='Call Status Distribution', hole=0.4, color_discrete_sequence=px.colors.sequential.Plasma)
+        fig_pie.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font_color='#F8FAFC')
+        st.plotly_chart(fig_pie, use_container_width=True)
+else:
+    st.info("No analytics data available.")
 
 
-st.subheader("Call Table")
+st.markdown("---")
+st.subheader("📝 Call Table")
 
 if filtered.empty:
     st.info("No call data available yet. Please initiate a call to populate the dashboard.")
     empty_df = pd.DataFrame(columns=[
-        "name",
-        "phone_number",
-        "status",
-        "duration",
-        "evaluation",
-        "score"
+        "name", "phone_number", "status", "duration", "evaluation", "score"
     ])
     st.dataframe(empty_df, use_container_width=True)
 else:
@@ -175,11 +235,12 @@ else:
     display_cols = [c for c in ["name", "phone_number", "status", "duration", "evaluation", "score"] if c in table_df.columns]
     st.dataframe(table_df[display_cols], use_container_width=True)
 
-st.subheader("Transcript & Evaluation")
+st.markdown("---")
+st.subheader("💬 Transcript & Evaluation")
 
 if not filtered.empty:
     call_ids = filtered["call_id"].dropna().unique().tolist()
-    selected_call = st.selectbox("Select a call", call_ids)
+    selected_call = st.selectbox("Select a call to review", call_ids)
 
     if selected_call:
         selected_row = filtered[filtered["call_id"] == selected_call].iloc[0]
@@ -196,46 +257,45 @@ if not filtered.empty:
         row_dict = selected_row.to_dict()
         structured_info = {k: v for k, v in row_dict.items() if k not in standard_keys and pd.notna(v) and v != ""}
         
-        if structured_info:
-            st.write("**Structured Outputs & Extra Info**")
-            for k, v in structured_info.items():
-                if k == "Call Summary":
-                    st.info(f"**{k}**: {v}")
-                else:
-                    st.write(f"- **{k}**: {v}")
-            st.write("---")
-
-        st.write("**Transcript**")
-        raw_transcript = selected_row.get("transcript")
+        col_struct, col_trans = st.columns([1, 2])
         
-        if pd.isna(raw_transcript) or not raw_transcript:
-            st.info("No transcript available.")
-        else:
-            # Parse the transcript line by line to create a chat interface
-            lines = str(raw_transcript).split('\n')
-            
-            # Simple container to hold the chat
-            chat_container = st.container(height=400)
-            
-            with chat_container:
-                for line in lines:
-                    line = line.strip()
-                    if not line:
-                        continue
-                        
-                    if line.startswith("AI:"):
-                        with st.chat_message("assistant"):
-                            st.write(line[3:].strip())
-                    elif line.startswith("User:"):
-                        with st.chat_message("user"):
-                            st.write(line[5:].strip())
+        with col_struct:
+            st.markdown("#### **Data Extracted**")
+            if structured_info:
+                for k, v in structured_info.items():
+                    if k == "Call Summary":
+                        st.info(f"**{k}**: {v}")
                     else:
-                        # Fallback for unrecognized formats or multiline messages
-                        st.write(line)
+                        st.markdown(f"**{k}**: {v}")
+            else:
+                st.write("No extra structured data.")
+                
+            recording_url = selected_row.get("recording_url")
+            if pd.notna(recording_url) and recording_url:
+                st.markdown("#### **Recording**")
+                st.audio(recording_url)
 
-        recording_url = selected_row.get("recording_url")
-        if pd.notna(recording_url) and recording_url:
-            st.write("**Recording**")
-            st.audio(recording_url)
+        with col_trans:
+            st.markdown("#### **Transcript**")
+            raw_transcript = selected_row.get("transcript")
+            
+            if pd.isna(raw_transcript) or not raw_transcript:
+                st.info("No transcript available.")
+            else:
+                lines = str(raw_transcript).split('\n')
+                chat_container = st.container(height=500)
+                
+                with chat_container:
+                    for line in lines:
+                        line = line.strip()
+                        if not line:
+                            continue
+                            
+                        if line.startswith("AI:"):
+                            st.markdown(f'<div class="chat-bubble-ai">🤖 <b>AI:</b> {line[3:].strip()}</div>', unsafe_allow_html=True)
+                        elif line.startswith("User:"):
+                            st.markdown(f'<div class="chat-bubble-user">👤 <b>User:</b> {line[5:].strip()}</div>', unsafe_allow_html=True)
+                        else:
+                            st.write(line)
 else:
     st.write("No transcripts available.")
