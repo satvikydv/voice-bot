@@ -6,3 +6,5 @@ streamlit
 pandas
 pymongo
 plotly
+google-genai
+pydantic
