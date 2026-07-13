@@ -47,23 +47,56 @@ import os
 import requests
 from typing import Optional
 
+import pathlib
+
+def load_prompt(usecase: str) -> Optional[str]:
+    filename = usecase.lower().replace(" ", "_") + ".md"
+    filepath = pathlib.Path(__file__).parent / "prompts" / filename
+    if filepath.exists():
+        return filepath.read_text(encoding="utf-8")
+    return None
+
 class CallRequest(BaseModel):
     phone_number: str
     name: Optional[str] = None
+    usecase: Optional[str] = None
 
 @app.post("/call")
 async def initiate_call(request: CallRequest) -> JSONResponse:
     api_key = os.getenv("VAPI_API_KEY")
-    assistant_id = os.getenv("ASSISTANT_ID")
     phone_number_id = os.getenv("PHONE_NUMBER_ID")
 
+    usecase_assistant_map = {
+        "Loan Recovery": os.getenv("RECOVERY_ASSISTANT_ID"),
+        "Gold Loan": os.getenv("GOLD_ASSISTANT_ID"),
+        "Motor Loan": os.getenv("MOTOR_ASSISTANT_ID"),
+        "MSME Loan": os.getenv("MSME_ASSISTANT_ID"),
+    }
+    
+    assistant_id = os.getenv("ASSISTANT_ID")
+    if request.usecase and request.usecase in usecase_assistant_map and usecase_assistant_map[request.usecase]:
+        assistant_id = usecase_assistant_map[request.usecase]
+
     if not api_key or not assistant_id or not phone_number_id:
-        raise HTTPException(status_code=500, detail="Missing Vapi configuration in environment variables.")
+        raise HTTPException(status_code=500, detail="Missing Vapi configuration in environment variables. Check ASSISTANT_ID or usecase-specific IDs.")
 
     try:
         customer_data = {"number": request.phone_number}
         if request.name:
             customer_data["name"] = request.name
+
+        payload = {
+            "assistantId": assistant_id,
+            "phoneNumberId": phone_number_id,
+            "customer": customer_data,
+        }
+
+        if request.usecase:
+            prompt = load_prompt(request.usecase)
+            if prompt:
+                payload["assistantOverrides"] = {
+                    "systemPrompt": prompt
+                }
 
         response = requests.post(
             "https://api.vapi.ai/call",
@@ -71,11 +104,7 @@ async def initiate_call(request: CallRequest) -> JSONResponse:
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             },
-            json={
-                "assistantId": assistant_id,
-                "phoneNumberId": phone_number_id,
-                "customer": customer_data,
-            },
+            json=payload,
             timeout=30,
         )
         response.raise_for_status()
