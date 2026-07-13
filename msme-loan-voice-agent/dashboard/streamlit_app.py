@@ -93,7 +93,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("📞 MSME Loan Voice Agent Dashboard")
+st.title("📞 Universal Financial Voice Agent")
 
 data = load_data()
 filtered = data.copy()
@@ -101,7 +101,7 @@ filtered = data.copy()
 st.sidebar.header("🚀 Initiate Call")
 target_phone = st.sidebar.text_input("Phone Number (E.164)", placeholder="+1234567890")
 target_name = st.sidebar.text_input("Name (Optional)", placeholder="John Doe")
-sector = st.sidebar.selectbox("Sector", ["None", "Retail", "Technology", "Agriculture"])
+usecase = st.sidebar.selectbox("Use Case", ["None", "Loan Recovery", "Gold Loan", "Motor Loan"])
 if st.sidebar.button("Make Call", use_container_width=True):
     if not target_phone:
         st.sidebar.error("Please enter a phone number.")
@@ -111,8 +111,8 @@ if st.sidebar.button("Make Call", use_container_width=True):
             payload = {"phone_number": target_phone}
             if target_name:
                 payload["name"] = target_name
-            if sector != "None":
-                payload["sector"] = sector
+            if usecase != "None":
+                payload["usecase"] = usecase
                 
             response = requests.post(
                 "http://localhost:8000/call",
