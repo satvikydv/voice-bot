@@ -70,6 +70,7 @@ async def initiate_call(request: CallRequest) -> JSONResponse:
         "Loan Recovery": os.getenv("RECOVERY_ASSISTANT_ID"),
         "Gold Loan": os.getenv("GOLD_ASSISTANT_ID"),
         "Motor Loan": os.getenv("MOTOR_ASSISTANT_ID"),
+        "MSME Loan": os.getenv("MSME_ASSISTANT_ID"),
     }
     
     assistant_id = os.getenv("ASSISTANT_ID")

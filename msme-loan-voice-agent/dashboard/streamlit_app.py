@@ -101,7 +101,7 @@ filtered = data.copy()
 st.sidebar.header("🚀 Initiate Call")
 target_phone = st.sidebar.text_input("Phone Number (E.164)", placeholder="+1234567890")
 target_name = st.sidebar.text_input("Name (Optional)", placeholder="John Doe")
-usecase = st.sidebar.selectbox("Use Case", ["None", "Loan Recovery", "Gold Loan", "Motor Loan"])
+usecase = st.sidebar.selectbox("Use Case", ["None", "Loan Recovery", "Gold Loan", "Motor Loan", "MSME Loan"])
 if st.sidebar.button("Make Call", use_container_width=True):
     if not target_phone:
         st.sidebar.error("Please enter a phone number.")
