@@ -48,6 +48,12 @@ import requests
 from typing import Optional
 
 import pathlib
+import re
+
+_UUID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.IGNORECASE)
+
+def is_valid_uuid(value: Optional[str]) -> bool:
+    return bool(value and _UUID_RE.match(value))
 
 def load_prompt(usecase: str) -> Optional[str]:
     filename = usecase.lower().replace(" ", "_") + ".md"
@@ -72,13 +78,20 @@ async def initiate_call(request: CallRequest) -> JSONResponse:
         "Motor Loan": os.getenv("MOTOR_ASSISTANT_ID"),
         "MSME Loan": os.getenv("MSME_ASSISTANT_ID"),
     }
-    
-    assistant_id = os.getenv("ASSISTANT_ID")
-    if request.usecase and request.usecase in usecase_assistant_map and usecase_assistant_map[request.usecase]:
-        assistant_id = usecase_assistant_map[request.usecase]
 
-    if not api_key or not assistant_id or not phone_number_id:
-        raise HTTPException(status_code=500, detail="Missing Vapi configuration in environment variables. Check ASSISTANT_ID or usecase-specific IDs.")
+    # Fall back to default ASSISTANT_ID if usecase-specific ID is missing or not a valid UUID
+    assistant_id = os.getenv("ASSISTANT_ID")
+    if request.usecase:
+        specific_id = usecase_assistant_map.get(request.usecase)
+        if is_valid_uuid(specific_id):
+            assistant_id = specific_id
+        else:
+            logging.warning("Usecase '%s' has no valid assistant ID, falling back to ASSISTANT_ID", request.usecase)
+
+    if not is_valid_uuid(assistant_id):
+        raise HTTPException(status_code=500, detail="ASSISTANT_ID is missing or not a valid UUID. Check your .env file.")
+    if not api_key or not phone_number_id:
+        raise HTTPException(status_code=500, detail="Missing VAPI_API_KEY or PHONE_NUMBER_ID in environment variables.")
 
     try:
         customer_data = {"number": request.phone_number}
@@ -91,12 +104,14 @@ async def initiate_call(request: CallRequest) -> JSONResponse:
             "customer": customer_data,
         }
 
+        # Pass usecase as a variable override so the assistant prompt can reference it
         if request.usecase:
-            prompt = load_prompt(request.usecase)
-            if prompt:
-                payload["assistantOverrides"] = {
-                    "systemPrompt": prompt
+            payload["assistantOverrides"] = {
+                "variableValues": {
+                    "usecase": request.usecase,
+                    "customer_name": request.name or "",
                 }
+            }
 
         response = requests.post(
             "https://api.vapi.ai/call",
@@ -109,7 +124,12 @@ async def initiate_call(request: CallRequest) -> JSONResponse:
         )
         response.raise_for_status()
         call_data = response.json()
-        return JSONResponse({"status": "success", "call_id": call_data.get("id")})
+        logging.info("Vapi call created: %s", call_data)
+        return JSONResponse({"status": "success", "call_id": call_data.get("id"), "vapi_status": call_data.get("status")})
+    except requests.exceptions.HTTPError as exc:
+        vapi_error = exc.response.text if exc.response is not None else str(exc)
+        logging.error("Vapi API error response: %s", vapi_error)
+        raise HTTPException(status_code=500, detail=vapi_error)
     except Exception as exc:
         logging.exception("Failed to initiate call")
         raise HTTPException(status_code=500, detail=str(exc))
